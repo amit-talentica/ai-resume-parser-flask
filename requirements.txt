@@ -1,0 +1,9 @@
+docx2txt==0.8
+openai==1.58.1
+pypdf==5.1.0
+pytesseract==0.3.13
+requests==2.32.3
+pillow==11.0.0
+pdfplumber==0.11.4
+langchain-community==0.3.13
+PyMuPDFb==1.24.3
