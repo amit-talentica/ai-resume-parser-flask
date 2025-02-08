@@ -30,6 +30,8 @@ def process_file():
         extracted_info = file_processor.process_pdf_files(file.filename)
     elif file_extension in [".png", ".jpg", ".jpeg"]:
         extracted_info = file_processor.process_image_files(file.filename)
+    elif file_extension in [".docx"]:
+        extracted_info = file_processor.process_docx_files(file.filename)
     else:
         return jsonify({"error": "Unsupported file format"}), 400
 

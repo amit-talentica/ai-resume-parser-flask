@@ -10,6 +10,7 @@ from zipfile import ZipFile
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader
 from utils.file_utils import write_output_file
 from utils.image_utils import extract_and_combine_images
+from utils.conversion_utils import extract_and_combine_images_from_docx
 
 
 class FileProcessor:
@@ -43,7 +44,6 @@ class FileProcessor:
             return None
 
 
-
     def process_pdf_files(self, pdf_file):
         """
         Processes a PDF file: extracts text using PyPDFLoader, or processes images if text is empty.
@@ -57,50 +57,56 @@ class FileProcessor:
         try:
             if not os.path.exists(pdf_file_path):
                 logging.error(f"File not found: {pdf_file_path}")
-                return
+                return {"error": f"File not found: {pdf_file}"}
 
-            logging.info(f"Processing PDF file: {pdf_file}")
-
-            # Attempt text extraction
             try:
                 pdf_loader = PyPDFLoader(pdf_file_path)
                 pdf_text = "".join(page.page_content for page in pdf_loader.load())
             except Exception as e:
-                logging.error(f"Error extracting text from {pdf_file}: {str(e)}")
-                return
+                logging.error(f"Error reading PDF file {pdf_file}: {str(e)}")
+                return {"error": f"Failed to read PDF file: {pdf_file}"}
 
-            # Check if extracted text is empty
-            if not pdf_text.strip():
-                logging.warning(f"Empty text extracted from {pdf_file}, attempting image extraction.")
+            resume_info = None
 
+            # If text is extracted successfully, process it
+            if pdf_text.strip():
+                try:
+                    resume_info = self.client.extract_resume_info(pdf_text)
+                except Exception as e:
+                    logging.error(f"Error extracting resume info from text in {pdf_file}: {str(e)}")
+                    return {"error": f"Failed to extract structured data from PDF text: {pdf_file}"}
+            else:
+                logging.warning(f"Empty text extracted from {pdf_file}, processing images instead.")
+                
                 try:
                     combined_image_path = extract_and_combine_images(pdf_file_path)
-                    if combined_image_path and os.path.exists(combined_image_path):
-                        base64_image = self.encode_image_to_base64(combined_image_path)
-                        pdf_text = self.client.call_gpt4o(base64_image)
-                    else:
-                        logging.error(f"Image extraction failed for {pdf_file}")
-                        return
+                    if not combined_image_path or not os.path.exists(combined_image_path):
+                        logging.error(f"Failed to extract images from {pdf_file}")
+                        return {"error": f"Failed to extract images from {pdf_file}"}
+
+                    base64_image = self.encode_image_to_base64(combined_image_path)
+                    resume_info = self.client.call_gpt4o(base64_image)
+
+                    if not resume_info.strip():
+                        logging.error(f"Failed to extract text from {pdf_file} even after image processing.")
+                        return {"error": f"Text extraction failed for {pdf_file}, even from images."}
+
                 except Exception as e:
-                    logging.error(f"Error processing images from {pdf_file}: {str(e)}")
-                    return
+                    logging.error(f"Error processing images for {pdf_file}: {str(e)}")
+                    return {"error": f"Image processing failed for {pdf_file}"}
 
-            # Extract structured information from text
-            try:
-                resume_info = self.client.extract_resume_info(pdf_text)
-            except Exception as e:
-                logging.error(f"Error extracting resume info from {pdf_file}: {str(e)}")
-                return
-
-            # Save output
+            # Save the extracted information
             try:
                 write_output_file(self.output_directory, pdf_file, resume_info)
-                logging.info(f"Successfully processed PDF file {pdf_file} in {time.time() - start_time:.2f} seconds.")
+                logging.info(f"Processed PDF file {pdf_file} in {time.time() - start_time:.2f} seconds.")
+                return {"message": f"Successfully processed {pdf_file}"}
             except Exception as e:
                 logging.error(f"Error writing output for {pdf_file}: {str(e)}")
+                return {"error": f"Failed to save extracted data for {pdf_file}"}
 
         except Exception as e:
-            logging.critical(f"Unexpected error processing {pdf_file}: {str(e)}", exc_info=True)
+            logging.error(f"Unexpected error processing PDF {pdf_file}: {str(e)}")
+            return {"error": f"Unexpected error while processing {pdf_file}"}
 
 
     def process_image_files(self, image_file):
@@ -143,15 +149,74 @@ class FileProcessor:
             try:
                 write_output_file(self.output_directory, image_file, extracted_text)
                 logging.info(f"Successfully processed and saved output for {image_file} in {time.time() - start_time:.2f} seconds.")
+                return {"message": f"Successfully processed {image_file}"}
             except Exception as e:
                 logging.error(f"Error writing output file for {image_file}: {str(e)}")
                 return None
 
-            return extracted_text
-
         except Exception as e:
             logging.critical(f"Unexpected error processing image file {image_file_path}: {str(e)}", exc_info=True)
             return None
+        
+
+    def process_docx_files(self, docx_file):
+        start_time = time.time()
+        docx_file_path = os.path.join(self.input_directory, docx_file)
+
+        try:
+            if not os.path.exists(docx_file_path):
+                logging.error(f"File not found: {docx_file_path}")
+                return {"error": f"File not found: {docx_file}"}
+
+            try:
+                docx_loader = Docx2txtLoader(docx_file_path)
+                docx_text = "".join(page.page_content for page in docx_loader.load())
+            except Exception as e:
+                logging.error(f"Error reading DOCX file {docx_file}: {str(e)}")
+                return {"error": f"Failed to read DOCX file: {docx_file}"}
+
+            resume_info = None
+
+            # If text is extracted successfully, process it
+            if docx_text.strip():
+                try:
+                    resume_info = self.client.extract_resume_info(docx_text)
+                except Exception as e:
+                    logging.error(f"Error extracting resume info from text in {docx_file}: {str(e)}")
+                    return {"error": f"Failed to extract structured data from DOCX text: {docx_file}"}
+            else:
+                logging.warning(f"Empty text extracted from {docx_file}, processing images instead.")
+
+                try:
+                    combined_image_path = extract_and_combine_images_from_docx(docx_file_path)
+                    if not combined_image_path or not os.path.exists(combined_image_path):
+                        logging.error(f"Failed to extract images from {docx_file}")
+                        return {"error": f"Failed to extract images from {docx_file}"}
+
+                    base64_image = self.encode_image_to_base64(combined_image_path)
+                    resume_info = self.client.call_gpt4o(base64_image)
+
+                    if not resume_info.strip():
+                        logging.error(f"Failed to extract text from {docx_file} even after image processing.")
+                        return {"error": f"Text extraction failed for {docx_file}, even from images."}
+
+                except Exception as e:
+                    logging.error(f"Error processing images for {docx_file}: {str(e)}")
+                    return {"error": f"Image processing failed for {docx_file}"}
+
+            # Save the extracted information
+            try:
+                write_output_file(self.output_directory, docx_file, resume_info)
+                logging.info(f"Processed DOCX file {docx_file} in {time.time() - start_time:.2f} seconds.")
+                return {"message": f"Successfully processed {docx_file}"}
+            except Exception as e:
+                logging.error(f"Error writing output for {docx_file}: {str(e)}")
+                return {"error": f"Failed to save extracted data for {docx_file}"}
+
+        except Exception as e:
+            logging.error(f"Unexpected error processing DOCX {docx_file}: {str(e)}")
+            return {"error": f"Unexpected error while processing {docx_file}"}
+
 
 
 
