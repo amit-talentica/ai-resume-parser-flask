@@ -8,12 +8,6 @@ from PIL import Image
 from io import BytesIO
 import fitz  # PyMuPDF
 
-# def process_image(image_path):
-#     """Process the image and return the extracted text."""
-#     image = Image.open(image_path)
-#     text = pytesseract.image_to_string(image)
-#     return text
-
 
 def extract_and_combine_images(pdf_path):
     start_time = time.time()

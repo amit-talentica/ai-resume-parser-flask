@@ -2,15 +2,12 @@ import os
 import logging
 import base64
 import pdfplumber
-import fitz
-import io
 import time
-from PIL import Image
-from zipfile import ZipFile
+
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader
 from utils.file_utils import write_output_file
 from utils.image_utils import extract_and_combine_images
-from utils.conversion_utils import extract_and_combine_images_from_docx
+from utils.conversion_utils import extract_and_combine_images_from_docx,convert_doc_to_docx
 
 
 class FileProcessor:
@@ -216,8 +213,77 @@ class FileProcessor:
         except Exception as e:
             logging.error(f"Unexpected error processing DOCX {docx_file}: {str(e)}")
             return {"error": f"Unexpected error while processing {docx_file}"}
+        
 
+    def process_doc_files(self, doc_file):
+        """
+        Processes .doc files by:
+        1. Converting .doc → .docx.
+        2. Extracting text from .docx.
+        3. If text is empty, extracting from images.
+        4. Calling extract_resume_info() only for renaming.
+        5. Deleting the original .doc but keeping .docx.
+        6. Writing output file.
+        """
+        start_time = time.time()
+        doc_file_path = os.path.join(self.input_directory, doc_file)
 
+        if not os.path.exists(doc_file_path):
+            logging.error(f"File not found: {doc_file_path}. Skipping.")
+            return {"error": f"File not found: {doc_file_path}"}
 
+        try:
+            # Step 1: Convert .doc to .docx
+            docx_file_path = convert_doc_to_docx(doc_file_path)
+            if not docx_file_path or not os.path.exists(docx_file_path):
+                logging.error(f"Failed to convert {doc_file} to .docx. Skipping.")
+                return {"error": f"Conversion failed for {doc_file}"}
 
+            # Step 2: Delete the original .doc file after successful conversion
+            try:
+                os.remove(doc_file_path)
+                logging.info(f"Deleted original DOC file: {doc_file_path}")
+            except Exception as delete_error:
+                logging.warning(f"Failed to delete DOC file {doc_file_path}: {delete_error}")
+
+            extracted_text = ""  
+
+            try:
+                # Step 3: Extract text from .docx
+                docx_loader = Docx2txtLoader(docx_file_path)
+                extracted_text = "".join(page.page_content for page in docx_loader.load()).strip()
+
+                # Step 4: If no text, extract from images
+                if not extracted_text:
+                    logging.warning(f"No text extracted from {doc_file}. Trying image extraction.")
+                    combined_image_path = extract_and_combine_images_from_docx(docx_file_path)
+
+                    if combined_image_path and os.path.exists(combined_image_path):
+                        base64_image = self.encode_image_to_base64(combined_image_path)
+                        extracted_text = self.client.call_gpt4o(base64_image)  # Directly save output
+
+                        if not extracted_text:
+                            logging.error(f"Failed to extract text from images in {doc_file}. Skipping.")
+                            return {"error": f"Failed to extract text from images in {doc_file}"}
+
+                        # Step 5: Write output directly for image-based extraction
+                        write_output_file(self.output_directory, doc_file, extracted_text)
+
+                        logging.info(f"Processed image-based DOC file {doc_file} in {time.time() - start_time:.2f} seconds.")
+                        return {"success": f"Processed image-based DOC file {doc_file}"}
+
+                # Step 6: Call extract_resume_info() **only for renaming** (text-based extraction)
+                resume_info = self.client.extract_resume_info(extracted_text)
+                write_output_file(self.output_directory, doc_file, resume_info)
+
+                logging.info(f"Processed DOC file {doc_file} in {time.time() - start_time:.2f} seconds.")
+                return {"success": f"Processed DOC file {doc_file}"}
+
+            except Exception as e:
+                logging.error(f"Error extracting text from DOCX {doc_file}: {str(e)}")
+                return {"error": f"Error extracting text from {doc_file}: {str(e)}"}
+
+        except Exception as e:
+            logging.error(f"Critical error processing DOC {doc_file}: {str(e)}")
+            return {"error": f"Critical error processing {doc_file}: {str(e)}"}
 

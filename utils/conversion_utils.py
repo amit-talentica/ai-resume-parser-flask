@@ -6,26 +6,49 @@ from PIL import Image
 from io import BytesIO
 from zipfile import ZipFile
 from config.settings import OUTPUT_DIR
+import platform
 
-def convert_doc_to_docx(input_file):
-    """
-    Converts a .doc file to .docx using LibreOffice.
-    
-    :param input_file: Path to the .doc file.
-    :return: Path to the converted .docx file or None if conversion fails.
-    """
-    if not input_file.lower().endswith(".doc"):
-        raise ValueError("Invalid file format. Only .doc files are supported.")
-
-    output_file = os.path.join(OUTPUT_DIR, os.path.basename(input_file).replace(".doc", ".docx"))
-
+if platform.system() == "Windows":
     try:
-        subprocess.run(["libreoffice", "--headless", "--convert-to", "docx", "--outdir", OUTPUT_DIR, input_file], check=True)
-        return output_file
-    except subprocess.CalledProcessError as e:
-        print(f"Error converting {input_file} to DOCX: {e}")
-        return None
+        from win32com.client import Dispatch
+    except ImportError:
+        print("pywin32 is not installed. Install it using: pip install pywin32")
 
+
+def convert_doc_to_docx(doc_path):
+        """ Convert a .doc file to .docx using MS Word (Windows) or LibreOffice (Linux/Mac). """
+        if not os.path.exists(doc_path):
+            print(f"ERROR: File not found: {doc_path}")
+            return None
+
+        # Extract the directory of the .doc file and construct the .docx file path in the same directory
+        doc_dir = os.path.dirname(doc_path)
+        docx_path = os.path.join(doc_dir, os.path.basename(doc_path).replace(".doc", ".docx"))
+        if os.name == "nt":  # Windows
+            try:
+                print(f" Converting {doc_path} to {docx_path} using MS Word...")
+                word = Dispatch("Word.Application")
+                word.Visible = False  # Background execution
+                doc = word.Documents.Open(os.path.abspath(doc_path))
+                doc.SaveAs(os.path.abspath(docx_path), FileFormat=16)  # Convert to .docx
+                doc.Close()
+                word.Quit()
+                print(f"Conversion successful: {docx_path}")
+                return docx_path
+            except Exception as e:
+                print(f"ERROR: Failed to convert {doc_path} - {e}")
+                return None
+                
+        elif os.name == "posix":  # Linux/macOS
+            try:
+                print(f" Converting {doc_path} using LibreOffice...")
+                subprocess.run(["libreoffice", "--headless", "--convert-to", "docx", doc_path], check=True)
+                return docx_path if os.path.exists(docx_path) else None
+            except Exception as e:
+                print(f"ERROR: LibreOffice conversion failed for {doc_path} - {e}")
+                return None
+        else:
+            print(f"Unsupported OS: {os.name}")
 
 def extract_and_combine_images_from_docx(docx_path):
         # Extract the base name of the DOCX (without extension)
