@@ -4,6 +4,7 @@ import logging
 import time
 from constants import OPENAI_API_KEY, SYSTEM_PROMPT, USER_PROMPT, JSON_TEMPLATE
 
+
 class OpenAIClient:
     def __init__(self, api_key):
         start_time = time.time()
@@ -31,21 +32,6 @@ class OpenAIClient:
         logging.info(f"Extracted resume info in {time.time() - start_time:.2f} seconds.")
         return response.json()['choices'][0]['message']['content'] if response.status_code == 200 else None
 
-    # def extract_resume_info(self, system_prompt, user_prompt, json_template, resume_text):
-    #     start_time = time.time()
-    #     url = "https://api.openai.com/v1/chat/completions"
-    #     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"}
-    #     data = {
-    #         "model": "gpt-3.5-turbo",
-    #         "messages": [
-    #             {"role": "system", "content": system_prompt},
-    #             {"role": "user", "content": f"{user_prompt}\n{json_template}\n{resume_text}\nPlease respond in valid JSON format."}
-    #         ]
-    #     }
-
-    #     response = requests.post(url, headers=headers, json=data, verify=False)
-    #     logging.info(f"Extracted resume info in {time.time() - start_time:.2f} seconds.")
-    #     return response.json()['choices'][0]['message']['content'] if response.status_code == 200 else None
 
     def call_gpt4o(self, base64_image):
         start_time = time.time()

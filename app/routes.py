@@ -12,6 +12,7 @@ client = OpenAIClient(OPENAI_API_KEY)
 # Initialize FileProcessor
 file_processor = FileProcessor(INPUT_DIR, OUTPUT_DIR, client, "Your System Prompt", "Your User Prompt", "Your JSON Template")
 
+
 @routes.route('/process_pdf', methods=['POST'])
 def process_pdf():
     file = request.files.get('file')
@@ -22,4 +23,17 @@ def process_pdf():
     file.save(file_path)
 
     extracted_info = file_processor.process_pdf_files(file.filename)
+    return jsonify({"extracted_info": extracted_info})
+
+
+@routes.route('/process_image', methods=['POST'])
+def process_image():
+    file = request.files.get('file')
+    if not file:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    file_path = os.path.join(INPUT_DIR, file.filename)
+    file.save(file_path)
+
+    extracted_info = file_processor.process_image_files(file.filename)
     return jsonify({"extracted_info": extracted_info})
