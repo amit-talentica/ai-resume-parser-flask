@@ -12,9 +12,11 @@ client = OpenAIClient(OPENAI_API_KEY)
 # Initialize FileProcessor
 file_processor = FileProcessor(INPUT_DIR, OUTPUT_DIR, client, "Your System Prompt", "Your User Prompt", "Your JSON Template")
 
-
-@routes.route('/process_pdf', methods=['POST'])
-def process_pdf():
+@routes.route('/process_file', methods=['POST'])
+def process_file():
+    """
+    Handles both PDF and image files, extracts relevant information, and returns the result.
+    """
     file = request.files.get('file')
     if not file:
         return jsonify({"error": "No file uploaded"}), 400
@@ -22,18 +24,13 @@ def process_pdf():
     file_path = os.path.join(INPUT_DIR, file.filename)
     file.save(file_path)
 
-    extracted_info = file_processor.process_pdf_files(file.filename)
-    return jsonify({"extracted_info": extracted_info})
+    file_extension = os.path.splitext(file.filename)[1].lower()
 
+    if file_extension in [".pdf"]:
+        extracted_info = file_processor.process_pdf_files(file.filename)
+    elif file_extension in [".png", ".jpg", ".jpeg"]:
+        extracted_info = file_processor.process_image_files(file.filename)
+    else:
+        return jsonify({"error": "Unsupported file format"}), 400
 
-@routes.route('/process_image', methods=['POST'])
-def process_image():
-    file = request.files.get('file')
-    if not file:
-        return jsonify({"error": "No file uploaded"}), 400
-
-    file_path = os.path.join(INPUT_DIR, file.filename)
-    file.save(file_path)
-
-    extracted_info = file_processor.process_image_files(file.filename)
     return jsonify({"extracted_info": extracted_info})
